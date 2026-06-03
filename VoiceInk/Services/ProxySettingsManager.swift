@@ -17,15 +17,24 @@ class ProxySettingsManager: ObservableObject {
     // MARK: - Published State
 
     @Published var isProxyEnabled: Bool = false {
-        didSet { UserDefaults.standard.set(isProxyEnabled, forKey: Self.proxyEnabledKey) }
+        didSet {
+            UserDefaults.standard.set(isProxyEnabled, forKey: Self.proxyEnabledKey)
+            syncProxyEnvVars()
+        }
     }
 
     @Published var autoDetectProxy: Bool = true {
-        didSet { UserDefaults.standard.set(autoDetectProxy, forKey: Self.autoDetectKey) }
+        didSet {
+            UserDefaults.standard.set(autoDetectProxy, forKey: Self.autoDetectKey)
+            syncProxyEnvVars()
+        }
     }
 
     @Published var manualConfig: ProxyConfiguration = .init() {
-        didSet { saveManualConfig() }
+        didSet {
+            saveManualConfig()
+            syncProxyEnvVars()
+        }
     }
 
     // MARK: - Derived State
@@ -58,6 +67,26 @@ class ProxySettingsManager: ObservableObject {
         loadPersistedState()
     }
 
+    // MARK: - Environment Variable Proxy Sync
+
+    /// Syncs the current proxy configuration to https_proxy / http_proxy environment variables
+    /// so that third-party SDKs (e.g. FluidAudio) that read env vars pick up proxy settings.
+    func syncProxyEnvVars() {
+        if let proxy = effectiveConfiguration {
+            let scheme = proxy.type == .socks5 ? "socks5" : "http"
+            let proxyURL = "\(scheme)://\(proxy.host):\(proxy.port)"
+            setenv("https_proxy", proxyURL, 1)
+            setenv("http_proxy", proxyURL, 1)
+            logger.notice("Proxy env vars synced: \(proxyURL, privacy: .public)")
+            #if LOCAL_BUILD
+            DebugFileLogger.shared.write("Proxy env vars synced: \(proxyURL)", category: "ProxySettingsManager")
+            #endif
+        } else {
+            unsetenv("https_proxy")
+            unsetenv("http_proxy")
+        }
+    }
+
     // MARK: - URLSessionConfiguration Factory
 
     /// Returns a `URLSessionConfiguration` with proxy settings applied, or the default ephemeral
@@ -68,8 +97,14 @@ class ProxySettingsManager: ObservableObject {
         if let proxy = effectiveConfiguration {
             config.connectionProxyDictionary = proxy.proxyDictionary
             logger.notice("Proxy configured: \(proxy.type.rawValue) \(proxy.host):\(proxy.port)")
+            #if LOCAL_BUILD
+            DebugFileLogger.shared.write("URLSession proxy configured: \(proxy.type.rawValue) \(proxy.host):\(proxy.port)", category: "ProxySettingsManager")
+            #endif
         } else {
             logger.notice("No proxy configured, using direct connection")
+            #if LOCAL_BUILD
+            DebugFileLogger.shared.write("URLSession: no proxy, direct connection", category: "ProxySettingsManager")
+            #endif
         }
 
         // Increase timeouts for potentially slower proxy connections
@@ -120,6 +155,9 @@ class ProxySettingsManager: ObservableObject {
         }
 
         logger.notice("System proxy detection: no enabled proxy found")
+        #if LOCAL_BUILD
+        DebugFileLogger.shared.write("System proxy detection: no enabled proxy found", category: "ProxySettingsManager")
+        #endif
         return nil
     }
 

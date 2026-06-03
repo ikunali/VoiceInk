@@ -73,9 +73,12 @@ class FluidAudioModelManager: ObservableObject {
             message: "Preparing FluidAudio download..."
         )
         defer {
+            clearProxyEnvVars()
             clearDownloadStatus(for: modelName, downloadID: downloadID)
             onModelsChanged?()
         }
+
+        applyProxyToFluidAudio()
 
         let version = FluidAudioModelManager.asrVersion(for: modelName)
         let progressHandler: DownloadUtils.ProgressHandler = { [weak self] progress in
@@ -84,14 +87,53 @@ class FluidAudioModelManager: ObservableObject {
             }
         }
 
+        #if LOCAL_BUILD
+        DebugFileLogger.shared.write("Starting download for \(modelName)", category: "FluidAudioModelManager")
+        #endif
+
         do {
             _ = try await AsrModels.downloadAndLoad(
                 version: version,
                 progressHandler: progressHandler
             )
+            #if LOCAL_BUILD
+            DebugFileLogger.shared.write("Download succeeded for \(modelName)", category: "FluidAudioModelManager")
+            #endif
         } catch {
             logger.error("❌ FluidAudio download failed for \(modelName, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            #if LOCAL_BUILD
+            DebugFileLogger.shared.write("Download FAILED for \(modelName): \(error)", category: "FluidAudioModelManager")
+            #endif
         }
+    }
+
+    // MARK: - Proxy bridging
+
+    /// Sets https_proxy / http_proxy env vars so FluidAudio's URLSession picks them up.
+    /// FluidAudio reads these env vars when creating DownloadUtils.sharedSession on first access.
+    private func applyProxyToFluidAudio() {
+        if let proxy = ProxySettingsManager.shared.effectiveConfiguration {
+            let scheme = proxy.type == .socks5 ? "socks5" : "http"
+            let proxyURL = "\(scheme)://\(proxy.host):\(proxy.port)"
+            setenv("https_proxy", proxyURL, 1)
+            setenv("http_proxy", proxyURL, 1)
+            logger.notice("FluidAudio proxy env vars set: \(proxyURL, privacy: .public)")
+            #if LOCAL_BUILD
+            DebugFileLogger.shared.write("Proxy env vars set: \(proxyURL)", category: "FluidAudioModelManager")
+            #endif
+        } else {
+            unsetenv("https_proxy")
+            unsetenv("http_proxy")
+            logger.notice("FluidAudio proxy env vars cleared (direct connection)")
+            #if LOCAL_BUILD
+            DebugFileLogger.shared.write("No proxy configured — direct connection", category: "FluidAudioModelManager")
+            #endif
+        }
+    }
+
+    private func clearProxyEnvVars() {
+        unsetenv("https_proxy")
+        unsetenv("http_proxy")
     }
 
     // MARK: - Delete
@@ -140,10 +182,14 @@ class FluidAudioModelManager: ObservableObject {
     private func updateDownloadProgress(_ progress: DownloadUtils.DownloadProgress, for modelName: String, downloadID: UUID) {
         guard activeDownloadIDs[modelName] == downloadID else { return }
 
+        let message = FluidAudioModelManager.statusMessage(for: progress)
         downloadStatuses[modelName] = FluidAudioDownloadStatus(
             fractionCompleted: min(max(progress.fractionCompleted, 0.0), 1.0),
-            message: FluidAudioModelManager.statusMessage(for: progress)
+            message: message
         )
+        #if LOCAL_BUILD
+        DebugFileLogger.shared.write("\(message) (\(Int(progress.fractionCompleted * 100))%)", category: "FluidAudioModelManager")
+        #endif
     }
 
     private static func statusMessage(for progress: DownloadUtils.DownloadProgress) -> String {

@@ -42,6 +42,9 @@ struct VoiceInkApp: App {
 
         AppDefaults.registerDefaults()
 
+        // Sync proxy settings to env vars before any SDK sessions are created
+        ProxySettingsManager.shared.syncProxyEnvVars()
+
         if UserDefaults.standard.object(forKey: "powerModeUIFlag") == nil {
             let hasEnabledPowerModes = PowerModeManager.shared.configurations.contains { $0.isEnabled }
             UserDefaults.standard.set(hasEnabledPowerModes, forKey: "powerModeUIFlag")
