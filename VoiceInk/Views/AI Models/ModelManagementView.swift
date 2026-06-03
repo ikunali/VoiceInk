@@ -98,7 +98,12 @@ struct ModelManagementView: View {
             )
 
             // Content
-            ModelSettingsView(whisperPrompt: whisperPrompt)
+            ScrollView {
+                VStack(spacing: 0) {
+                    ModelSettingsView(whisperPrompt: whisperPrompt)
+                    ProxySettingsView()
+                }
+            }
         }
     }
     

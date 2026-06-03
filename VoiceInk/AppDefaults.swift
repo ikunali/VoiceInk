@@ -53,6 +53,10 @@ enum AppDefaults {
             // Model
             "PrewarmModelOnWake": true,
 
+            // Proxy
+            "proxyEnabled": false,
+            "proxyAutoDetect": true,
+
         ])
 
         PunctuationCleanupMode.migrateLegacyUserDefaultIfNeeded()

@@ -136,7 +136,12 @@ class WhisperModelManager: ObservableObject {
                 }
             }
 
-            let task = URLSession.shared.downloadTask(with: url) { tempURL, response, error in
+            // Use proxy-aware session if proxy is enabled
+            let session = ProxySettingsManager.shared.isProxyEnabled
+                ? ProxySettingsManager.shared.makeSession()
+                : URLSession.shared
+
+            let task = session.downloadTask(with: url) { tempURL, response, error in
                 if let error = error {
                     finishOnce(.failure(error))
                     return
