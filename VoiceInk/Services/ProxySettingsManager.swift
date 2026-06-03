@@ -77,13 +77,20 @@ class ProxySettingsManager: ObservableObject {
             let proxyURL = "\(scheme)://\(proxy.host):\(proxy.port)"
             setenv("https_proxy", proxyURL, 1)
             setenv("http_proxy", proxyURL, 1)
-            logger.notice("Proxy env vars synced: \(proxyURL, privacy: .public)")
+            // Signal FluidAudio to bypass TLS when a MITM proxy is in use
+            if proxy.ignoreSslErrors || proxy.customCACertificateData != nil {
+                setenv("VOICEINK_IGNORE_SSL", "1", 1)
+            } else {
+                unsetenv("VOICEINK_IGNORE_SSL")
+            }
+            logger.notice("Proxy env vars synced: \(proxyURL, privacy: .public) ignoreSsl=\(proxy.ignoreSslErrors || proxy.customCACertificateData != nil)")
             #if LOCAL_BUILD
-            DebugFileLogger.shared.write("Proxy env vars synced: \(proxyURL)", category: "ProxySettingsManager")
+            DebugFileLogger.shared.write("Proxy env vars synced: \(proxyURL) ignoreSsl=\(proxy.ignoreSslErrors || proxy.customCACertificateData != nil)", category: "ProxySettingsManager")
             #endif
         } else {
             unsetenv("https_proxy")
             unsetenv("http_proxy")
+            unsetenv("VOICEINK_IGNORE_SSL")
         }
     }
 

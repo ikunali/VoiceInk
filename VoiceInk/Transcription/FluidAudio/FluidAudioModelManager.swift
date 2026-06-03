@@ -109,31 +109,24 @@ class FluidAudioModelManager: ObservableObject {
 
     // MARK: - Proxy bridging
 
-    /// Sets https_proxy / http_proxy env vars so FluidAudio's URLSession picks them up.
-    /// FluidAudio reads these env vars when creating DownloadUtils.sharedSession on first access.
+    /// Syncs proxy settings to env vars and refreshes FluidAudio's shared URLSession so it
+    /// picks up both the proxy config and any SSL bypass flag (VOICEINK_IGNORE_SSL).
     private func applyProxyToFluidAudio() {
-        if let proxy = ProxySettingsManager.shared.effectiveConfiguration {
-            let scheme = proxy.type == .socks5 ? "socks5" : "http"
-            let proxyURL = "\(scheme)://\(proxy.host):\(proxy.port)"
-            setenv("https_proxy", proxyURL, 1)
-            setenv("http_proxy", proxyURL, 1)
-            logger.notice("FluidAudio proxy env vars set: \(proxyURL, privacy: .public)")
-            #if LOCAL_BUILD
-            DebugFileLogger.shared.write("Proxy env vars set: \(proxyURL)", category: "FluidAudioModelManager")
-            #endif
-        } else {
-            unsetenv("https_proxy")
-            unsetenv("http_proxy")
-            logger.notice("FluidAudio proxy env vars cleared (direct connection)")
-            #if LOCAL_BUILD
-            DebugFileLogger.shared.write("No proxy configured — direct connection", category: "FluidAudioModelManager")
-            #endif
-        }
+        ProxySettingsManager.shared.syncProxyEnvVars()
+        // Replace the static session so it reads the freshly set env vars
+        DownloadUtils.sharedSession = ModelRegistry.configuredSession()
+        logger.notice("FluidAudio session refreshed with current proxy/SSL settings")
+        #if LOCAL_BUILD
+        let ignoreSsl = ProcessInfo.processInfo.environment["VOICEINK_IGNORE_SSL"] == "1"
+        let proxyURL = ProcessInfo.processInfo.environment["https_proxy"] ?? "none"
+        DebugFileLogger.shared.write("FluidAudio session refreshed — proxy=\(proxyURL) ignoreSsl=\(ignoreSsl)", category: "FluidAudioModelManager")
+        #endif
     }
 
     private func clearProxyEnvVars() {
         unsetenv("https_proxy")
         unsetenv("http_proxy")
+        unsetenv("VOICEINK_IGNORE_SSL")
     }
 
     // MARK: - Delete
